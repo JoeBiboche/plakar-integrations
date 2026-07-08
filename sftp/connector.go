@@ -124,7 +124,7 @@ func New(ctx context.Context, opts *connectors.Options, name string, config map[
 
 	sftp.client, err = Connect(sftp.endpoint, config)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("SSH connection to %q failed: %q\n", parsed.Host, err)
 	}
 
 	return &sftp, nil
