@@ -47,6 +47,7 @@ type FSExporter struct {
 	hlCanon  sync.Map           // key -> canonical root-relative path string
 
 	skipOwnership bool
+	skipPerms     bool
 }
 
 func init() {
@@ -65,6 +66,16 @@ func NewFSExporter(ctx context.Context, opts *connectors.Options, name string, c
 		}
 
 		skipOwnership = b
+	}
+
+	skipPermissions := false
+	if v, ok := config["skip_permissions"]; ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for %s: %w", "skip_permissions", err)
+		}
+
+		skipPermissions = b
 	}
 
 	absRoot, err := filepath.Abs(rootDir)
@@ -88,6 +99,7 @@ func NewFSExporter(ctx context.Context, opts *connectors.Options, name string, c
 		rootDir:       absRoot,
 		root:          root,
 		skipOwnership: skipOwnership,
+		skipPerms:     skipPermissions,
 	}, nil
 }
 
@@ -170,7 +182,9 @@ loop:
 					if !os.IsExist(err) {
 						results <- record.Error(err)
 					} else {
-						_ = p.root.Chmod(pathname, 0700)
+						if !p.skipPerms {
+							_ = p.root.Chmod(pathname, 0700)
+						}
 						results <- record.Ok()
 					}
 				} else {
@@ -331,7 +345,7 @@ func (p *FSExporter) writeAtomic(record *connectors.Record, pathname string) err
 }
 
 func (p *FSExporter) permissions(pathname string, fileinfo objects.FileInfo) error {
-	if fileinfo.Mode()&os.ModeSymlink == 0 {
+	if fileinfo.Mode()&os.ModeSymlink == 0 && !p.skipPerms {
 		// Preserve all permission bits including setuid (04000), setgid (02000), and sticky bit (01000)
 		// Use the full mode which includes these special bits, not just Mode().Perm()
 		mode := fileinfo.Mode().Perm() | fileinfo.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky)
@@ -339,6 +353,7 @@ func (p *FSExporter) permissions(pathname string, fileinfo objects.FileInfo) err
 			return fmt.Errorf("chmod(%s): %w", pathname, err)
 		}
 	}
+
 	if os.Geteuid() == 0 && !p.skipOwnership {
 		if err := p.root.Lchown(pathname, int(fileinfo.Uid()), int(fileinfo.Gid())); err != nil {
 			return fmt.Errorf("chown(%s): %w", pathname, err)
