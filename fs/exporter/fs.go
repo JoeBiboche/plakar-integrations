@@ -48,6 +48,7 @@ type FSExporter struct {
 
 	skipOwnership bool
 	skipPerms     bool
+	skipTimes     bool
 }
 
 func init() {
@@ -78,6 +79,16 @@ func NewFSExporter(ctx context.Context, opts *connectors.Options, name string, c
 		skipPermissions = b
 	}
 
+	skipTimes := false
+	if v, ok := config["skip_times"]; ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("invalid value for %s: %w", "skip_times", err)
+		}
+
+		skipTimes = b
+	}
+
 	absRoot, err := filepath.Abs(rootDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to absolutify root: %w", err)
@@ -100,6 +111,7 @@ func NewFSExporter(ctx context.Context, opts *connectors.Options, name string, c
 		root:          root,
 		skipOwnership: skipOwnership,
 		skipPerms:     skipPermissions,
+		skipTimes:     skipTimes,
 	}, nil
 }
 
@@ -246,10 +258,14 @@ func (p *FSExporter) symlink(record *connectors.Record, pathname string) error {
 		}
 	}
 
-	// This is safe to do through the real filesystem because pathname has been
-	// validated already through root.Symlink()
-	realpath := filepath.Join(p.root.Name(), pathname)
-	return Lutimes(realpath, fileinfo.ModTime(), fileinfo.ModTime())
+	if !p.skipTimes {
+		// This is safe to do through the real filesystem because pathname has been
+		// validated already through root.Symlink()
+		realpath := filepath.Join(p.root.Name(), pathname)
+		return Lutimes(realpath, fileinfo.ModTime(), fileinfo.ModTime())
+	}
+
+	return nil
 }
 
 func (p *FSExporter) hardlink(record *connectors.Record, pathname string) error {
@@ -360,12 +376,15 @@ func (p *FSExporter) permissions(pathname string, fileinfo objects.FileInfo) err
 		}
 	}
 
-	// This is safe to do through the real filesystem because pathname has been
-	// validated already through either through Mkdir for a directory or Rename
-	// for a file or an hardlink.
-	realpath := filepath.Join(p.root.Name(), pathname)
-	if err := Lutimes(realpath, fileinfo.ModTime(), fileinfo.ModTime()); err != nil {
-		return fmt.Errorf("lutimes(%s): %w", pathname, err)
+	if !p.skipTimes {
+		// This is safe to do through the real filesystem because pathname has been
+		// validated already through either through Mkdir for a directory or Rename
+		// for a file or an hardlink.
+		realpath := filepath.Join(p.root.Name(), pathname)
+		if err := Lutimes(realpath, fileinfo.ModTime(), fileinfo.ModTime()); err != nil {
+			return fmt.Errorf("lutimes(%s): %w", pathname, err)
+		}
 	}
+
 	return nil
 }
