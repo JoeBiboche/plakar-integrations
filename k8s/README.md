@@ -20,6 +20,7 @@ CSI driver snapshot feature (preferred) and without.
   - `override` adds `DAC_OVERRIDE`, `CHOWN`, `FOWNER` and `FSETID`
 - `labels`: optional, used only for configuration backup.  Limits the manifests to backup to the ones matching the given labels.
 - `volume_snapshot_class`: required for CSI-based PVC backups.  It's the volume snapshot class to use.
+- `ignore_resources`: optional, used only for configuration restore.  Semicolon-separated list of `group/Kind` to leave out of the restore.
 
 
 ## Permissions
