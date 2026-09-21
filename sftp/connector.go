@@ -122,7 +122,7 @@ func New(ctx context.Context, opts *connectors.Options, name string, config map[
 		}
 	}
 
-	sftp.client, err = connect(sftp.endpoint, config)
+	sftp.client, err = Connect(sftp.endpoint, config)
 	if err != nil {
 		return nil, err
 	}

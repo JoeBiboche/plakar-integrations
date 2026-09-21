@@ -254,7 +254,8 @@ func checkParamSupportForWindows(params map[string]string) error {
 	return nil
 }
 
-func connect(endpoint *url.URL, params map[string]string) (*sftp.Client, error) {
+/* Must be public. Called externally from VSS integration. */
+func Connect(endpoint *url.URL, params map[string]string) (*sftp.Client, error) {
 	if endpoint == nil {
 		return nil, fmt.Errorf("nil endpoint")
 	}
