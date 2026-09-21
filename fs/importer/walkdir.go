@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -89,7 +89,12 @@ func (f *FSImporter) walkDir_worker(jobs <-chan file, records chan<- *connectors
 
 func walkDir_addPrefixDirectories(root string, records chan<- *connectors.Record) {
 	for {
-		var finfo objects.FileInfo
+		var (
+			finfo      objects.FileInfo
+			recordpath = toslash(root)
+			newroot    = filepath.Dir(root)
+			isroot     = root == newroot
+		)
 
 		sb, err := os.Lstat(root)
 		if err != nil {
@@ -100,22 +105,18 @@ func walkDir_addPrefixDirectories(root string, records chan<- *connectors.Record
 			}
 		} else {
 			finfo = objects.FileInfoFromStat(sb)
+			if isroot {
+				// this prevents on windows Lname from
+				// being / or \ for C:.
+				finfo.Lname = path.Base(recordpath)
+			}
 		}
 
-		records <- connectors.NewRecord(toslash(root), "", finfo, nil, nil)
+		records <- connectors.NewRecord(recordpath, "", finfo, nil, nil)
 
-		newroot := filepath.Dir(root)
-		if newroot == root { // base case for "/" or "C:\"
+		if isroot {
 			break
 		}
 		root = newroot
-	}
-
-	if runtime.GOOS == "windows" {
-		finfo := objects.FileInfo{
-			Lname: "/",
-			Lmode: os.ModeDir | 0755,
-		}
-		records <- connectors.NewRecord("/", "", finfo, nil, nil)
 	}
 }
