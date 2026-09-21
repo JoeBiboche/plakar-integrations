@@ -8,6 +8,8 @@ import (
 )
 
 func TestValidateGroup(t *testing.T) {
+	t.Parallel()
+
 	suite := []struct {
 		name    string
 		group   string
@@ -52,6 +54,8 @@ func TestValidateGroup(t *testing.T) {
 
 	for _, test := range suite {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := validateGroup(test.group)
 
 			if test.wantErr != "" {
@@ -66,6 +70,8 @@ func TestValidateGroup(t *testing.T) {
 }
 
 func TestValidateKind(t *testing.T) {
+	t.Parallel()
+
 	suite := []struct {
 		name    string
 		kind    string
@@ -102,6 +108,8 @@ func TestValidateKind(t *testing.T) {
 
 	for _, test := range suite {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			err := validateKind(test.kind)
 
 			if test.wantErr != "" {
@@ -116,6 +124,8 @@ func TestValidateKind(t *testing.T) {
 }
 
 func TestParseGroupKind(t *testing.T) {
+	t.Parallel()
+
 	suite := []struct {
 		name    string
 		str     string
@@ -166,6 +176,8 @@ func TestParseGroupKind(t *testing.T) {
 
 	for _, test := range suite {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := parseGroupKind(test.str)
 
 			if test.wantErr != "" {
@@ -181,6 +193,8 @@ func TestParseGroupKind(t *testing.T) {
 }
 
 func TestParseIgnoreResources(t *testing.T) {
+	t.Parallel()
+
 	suite := []struct {
 		name    string
 		str     string
@@ -243,6 +257,8 @@ func TestParseIgnoreResources(t *testing.T) {
 
 	for _, test := range suite {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := parseIgnoreResources(test.str)
 
 			if test.wantErr != "" {
