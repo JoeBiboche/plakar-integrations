@@ -259,6 +259,12 @@ func setuidRecord(pathname, content string) *connectors.Record {
 // with skip_permissions set, chmod never runs so the entry keeps whatever
 // mode it was created with.
 func TestExport_SkipPermissions(t *testing.T) {
+	// Windows has no setuid/setgid bits, and os.Stat there synthesizes mode
+	// from the read-only attribute alone, so chmod'd values aren't observable.
+	if runtime.GOOS == "windows" {
+		t.Skip()
+	}
+
 	cases := []struct {
 		name            string
 		isDir           bool
@@ -415,6 +421,12 @@ func TestExport_SkipOwnership(t *testing.T) {
 // only bypasses permissions()/mtime restore for the restore root itself,
 // leaving regular subdirectories unaffected.
 func TestExport_SkipRootPermsAndTime(t *testing.T) {
+	// Windows has no setuid/setgid bits, and os.Stat there synthesizes mode
+	// from the read-only attribute alone, so chmod'd values aren't observable.
+	if runtime.GOOS == "windows" {
+		t.Skip()
+	}
+
 	recorded := time.Date(2001, time.February, 3, 4, 5, 6, 0, time.UTC)
 
 	cases := []struct {
