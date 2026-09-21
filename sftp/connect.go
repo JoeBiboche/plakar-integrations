@@ -146,7 +146,7 @@ func startMaster(endpoint *url.URL, params map[string]string, host, sock string)
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to start ssh master: %w: %s", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("failed to start ssh master: %q: %w: %q", cmd, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
