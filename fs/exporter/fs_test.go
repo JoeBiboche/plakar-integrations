@@ -353,7 +353,10 @@ func TestExport_SkipTimes(t *testing.T) {
 			require.Equal(t, !tc.skipTimes, fi.ModTime().Equal(recorded),
 				"mtime set to recorded value, mtime %v", fi.ModTime())
 			if tc.skipTimes {
-				require.False(t, fi.ModTime().Before(before),
+				// Filesystem mtime granularity can trail time.Now() by a
+				// handful of microseconds, so allow slack rather than
+				// asserting a strict happens-after relationship.
+				require.False(t, fi.ModTime().Before(before.Add(-time.Second)),
 					"mtime %v, want a value no earlier than %v", fi.ModTime(), before)
 			}
 		})
@@ -457,7 +460,10 @@ func TestExport_SkipRootPermsAndTime(t *testing.T) {
 			if tc.skipRootPermsAndTime {
 				require.Equal(t, os.FileMode(0700), rootFi.Mode().Perm(),
 					"restore root mode must stay at the Mkdir default")
-				require.False(t, rootFi.ModTime().Before(before),
+				// Filesystem mtime granularity can trail time.Now() by a
+				// handful of microseconds, so allow slack rather than
+				// asserting a strict happens-after relationship.
+				require.False(t, rootFi.ModTime().Before(before.Add(-time.Second)),
 					"restore root mtime %v, want a value no earlier than %v", rootFi.ModTime(), before)
 			}
 
