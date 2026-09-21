@@ -220,35 +220,30 @@ func (s *Sftp) writeAtomic(record *connectors.Record, pathname string) error {
 		return err
 	}
 
+	if s.skipPermissions {
+		return nil
+	}
+
 	fileinfo := record.FileInfo
-	mode := s.restoreMode(fileinfo)
+	// Preserve all permission bits including setuid (04000), setgid (02000), and sticky bit (01000)
+	// Use the full mode which includes these special bits, not just Mode().Perm()
+	mode := fileinfo.Mode().Perm() | fileinfo.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky)
 	if err := s.client.Chmod(pathname, mode); err != nil {
 		return fmt.Errorf("could not chmod")
 	}
 	return nil
 }
 
-// restoreMode computes the mode to apply to a restored file. By default,
-// the setuid, setgid and sticky bits recorded in the snapshot are stripped
-// to prevent restoring attacker-controlled privileged executables. Only
-// when allowPrivilegeEscalation is explicitly enabled are those bits
-// reapplied as recorded in the source snapshot.
-func (s *Sftp) restoreMode(fileinfo objects.FileInfo) os.FileMode {
-	mode := fileinfo.Mode().Perm()
-	if s.allowPrivilegeEscalation {
-		mode |= fileinfo.Mode() & (os.ModeSetuid | os.ModeSetgid | os.ModeSticky)
-	}
-	return mode
-}
-
 func (s *Sftp) permissions(pathname string, fileinfo objects.FileInfo) error {
-	// Apply ownership before mode bits so that any (opt-in) setuid/setgid
-	// bits are never set while the file is still owned by an unintended uid/gid.
+	// Apply ownership before mode bits so that any setuid/setgid bits are
+	// never set while the file is still owned by an unintended uid/gid.
 	if err := s.chown(pathname, fileinfo); err != nil {
 		return err
 	}
-	if fileinfo.Mode()&os.ModeSymlink == 0 {
-		mode := s.restoreMode(fileinfo)
+	if fileinfo.Mode()&os.ModeSymlink == 0 && !s.skipPermissions {
+		// Preserve all permission bits including setuid (04000), setgid (02000), and sticky bit (01000)
+		// Use the full mode which includes these special bits, not just Mode().Perm()
+		mode := fileinfo.Mode().Perm() | fileinfo.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky)
 		if err := s.client.Chmod(pathname, mode); err != nil {
 			return fmt.Errorf("could not chmod")
 		}
