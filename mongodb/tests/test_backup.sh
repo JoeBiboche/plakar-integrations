@@ -30,6 +30,9 @@ test_backup_basic() {
 	egrep -v '(insertedId|Count):' $testroot/stdout > $testroot/stdout.filtered
 
 	cat > $testroot/stdout.expected <<EOF
+switched to db admin
+{ ok: 1 }
+switched to db test
 {
   acknowledged: true,
 }
@@ -48,6 +51,8 @@ EOF
 	run_plakar source add mongodb_src "$PLAKAR_MONGODB_ADDR" \
 		> /dev/null
 
+	get_auth_creds_yml >> $testroot/cfg/sources.yml
+
 	timestamp="2026-08-16T14:27:24Z"
 	run_plakar at "$testroot/backups" backup \
 		-o use_tls=false \
@@ -63,6 +68,19 @@ EOF
 	ret=$?
 	if [ $ret -ne 0 ]; then
 		diff -u $testroot/stdout.expected $testroot/stdout
+		test_done "$testroot" "$ret"
+		return 1
+	fi
+
+	# A zero-size snapshot means the backup has failed somehow.
+	run_plakar at "$testroot/backups" ls | \
+		awk '{ print $3 }' > $testroot/stdout
+	echo "0" > $testroot/stdout.unexpected
+	cmp -s $testroot/stdout.unexpected $testroot/stdout
+	ret=$?
+	if [ $ret -eq 0 ]; then
+		echo "zero bytes backed up in snapshot $snapshot" >&2
+		ret=1
 		test_done "$testroot" "$ret"
 		return 1
 	fi

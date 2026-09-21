@@ -94,6 +94,11 @@ func NewExporter(ctx context.Context, opts *connectors.Options, proto string, pa
 	return e, nil
 }
 
+func cleanupTempFile(f *os.File) {
+	os.Remove(f.Name())
+	f.Close()
+}
+
 func (e *mongodbExporter) commonArgs() []string {
 	var args []string
 
@@ -103,14 +108,6 @@ func (e *mongodbExporter) commonArgs() []string {
 	args = append(args, e.port)
 	if e.use_tls {
 		args = append(args, "--tls")
-	}
-	if len(e.username) > 0 {
-		args = append(args, "--username")
-		args = append(args, e.username)
-	}
-	if len(e.password) > 0 {
-		args = append(args, "--password")
-		args = append(args, e.password)
 	}
 
 	return args;
@@ -123,6 +120,11 @@ func (e *mongodbExporter) Ping(ctx context.Context) error {
 	cmd := exec.Command("mongosh", args...)
 
 	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return err
 	}
@@ -145,6 +147,11 @@ func (e *mongodbExporter) Ping(ctx context.Context) error {
 				return nil
 			}
 		}
+	} else {
+		buf, err = io.ReadAll(stderr)
+		if err != nil {
+			return err
+		}
 	}
 
 	return fmt.Errorf("Unexpected output from mongosh: '%s'", string(buf))
@@ -160,7 +167,27 @@ type commandResult struct {
 func (e *mongodbExporter) Export(ctx context.Context, records <-chan *connectors.Record, results chan<- *connectors.Result) error {
 	defer close(results)
 
+	var f *os.File
+	var err error
+
 	args := e.commonArgs()
+	if len(e.username) > 0 {
+		args = append(args, "--username")
+		args = append(args, e.username)
+	}
+	if len(e.password) > 0 {
+		f, err = os.CreateTemp("", "plakar-mongodb")
+		if err != nil {
+			return err
+		}
+		defer cleanupTempFile(f)
+
+		if _, err = fmt.Fprintf(f, "password: \"%s\"\n", e.password); err != nil {
+			return err
+		}
+		args = append(args, "--config")
+		args = append(args, f.Name())
+	}
 	args = append(args, "--drop")
 	args = append(args, "--objcheck")
 	args = append(args, "--archive")
@@ -228,7 +255,7 @@ func (e *mongodbExporter) Export(ctx context.Context, records <-chan *connectors
 	c := make(chan commandResult, 1)
 
 	// reap process
-	go func() { _ = cmd.Wait(); c <- commandResult{exit: true} }()
+	go func() { err := cmd.Wait(); c <- commandResult{exit: true, err : err} }()
 
 	go func() {
 		read_stdout(c)
@@ -279,11 +306,11 @@ func (e *mongodbExporter) Export(ctx context.Context, records <-chan *connectors
 	if debug && len(res.stdout) > 0 {
 		fmt.Fprintf(os.Stderr, "%s", string(res.stdout))
 	}
-	if err == nil && len(res.stderr) > 0 {
+	if err != nil && res.exit == true && len(res.stderr) > 0 {
 		if debug {
 			fmt.Fprintf(os.Stderr, "%s", string(res.stderr))
 		}
-		err = fmt.Errorf("%s", res.stderr)
+		err = fmt.Errorf("%s: %s", err, res.stderr)
 	}
 
 	return err
