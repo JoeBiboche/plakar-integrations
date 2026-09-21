@@ -45,6 +45,7 @@ func TestSetupKnownHosts_CreatesFile(t *testing.T) {
 	path, err := setupKnownHosts(params)
 	require.NoError(t, err)
 	require.NotEmpty(t, path)
+	defer func() { _ = os.Remove(path) }()
 
 	// Verify file exists
 	_, err = os.Stat(path)
@@ -54,9 +55,6 @@ func TestSetupKnownHosts_CreatesFile(t *testing.T) {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, hostKey+"\n", string(content))
-
-	// Cleanup
-	os.Remove(path)
 }
 
 func TestSetupKnownHosts_TemporaryFileLocation(t *testing.T) {
@@ -78,7 +76,58 @@ func TestSetupKnownHosts_TemporaryFileLocation(t *testing.T) {
 	assert.Contains(t, filename, "known_hosts")
 
 	// Cleanup
-	os.Remove(path)
+	_ = os.Remove(path)
+}
+
+func countKnownHostsTempFiles(t *testing.T) int {
+	t.Helper()
+
+	entries, err := os.ReadDir(os.TempDir())
+	require.NoError(t, err)
+
+	count := 0
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "known_hosts_") {
+			count++
+		}
+	}
+	return count
+}
+
+func TestSshArgs_DoesNotCreateTempFiles(t *testing.T) {
+	before := countKnownHostsTempFiles(t)
+
+	endpoint, _ := url.Parse("sftp://user@example.com/path")
+	params := map[string]string{
+		"host_key": "example.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC...",
+	}
+
+	for range 50 {
+		sshArgs(endpoint, params, "/some/known_hosts/path")
+	}
+
+	assert.Equal(t, before, countKnownHostsTempFiles(t), "sshArgs must not create known_hosts temp files")
+}
+
+func TestSetupKnownHosts_CleanedUpAcrossRepeatedCalls(t *testing.T) {
+	before := countKnownHostsTempFiles(t)
+
+	params := map[string]string{
+		"host_key": "example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHKS...",
+	}
+
+	for range 10 {
+		func() {
+			path, err := setupKnownHosts(params)
+			require.NoError(t, err)
+			defer func() { _ = os.Remove(path) }()
+
+			_, err = os.Stat(path)
+			require.NoError(t, err)
+		}()
+	}
+
+	assert.Equal(t, before, countKnownHostsTempFiles(t), "no known_hosts temp file should be left behind")
 }
 
 func TestSshArgs_WithHostKey(t *testing.T) {
@@ -87,7 +136,11 @@ func TestSshArgs_WithHostKey(t *testing.T) {
 		"host_key": "example.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC...",
 	}
 
-	args := sshArgs(endpoint, params)
+	knownHostsFile, err := setupKnownHosts(params)
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(knownHostsFile) }()
+
+	args := sshArgs(endpoint, params, knownHostsFile)
 
 	// Verify the arguments contain the necessary flags
 	foundUserKnownHostsFile := false
@@ -110,7 +163,7 @@ func TestSshArgs_WithHostKey(t *testing.T) {
 		if args[i] == "-o" && strings.HasPrefix(args[i+1], "UserKnownHostsFile=") {
 			parts := strings.Split(args[i+1], "=")
 			if len(parts) == 2 {
-				os.Remove(parts[1])
+				_ = os.Remove(parts[1])
 			}
 		}
 	}
@@ -120,7 +173,7 @@ func TestSshArgs_WithoutHostKey_IgnoresHostKeyChecking(t *testing.T) {
 	endpoint, _ := url.Parse("sftp://user@example.com/path")
 	params := map[string]string{}
 
-	args := sshArgs(endpoint, params)
+	args := sshArgs(endpoint, params, "")
 
 	// Verify UserKnownHostsFile is NOT in args
 	for i := 0; i < len(args)-1; i++ {
@@ -142,7 +195,11 @@ func TestSshArgs_HostKeyTakesPrecedenceOverInsecure(t *testing.T) {
 		"insecure_ignore_host_key": "true",
 	}
 
-	args := sshArgs(endpoint, params)
+	knownHostsFile, err := setupKnownHosts(params)
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(knownHostsFile) }()
+
+	args := sshArgs(endpoint, params, knownHostsFile)
 
 	// Find StrictHostKeyChecking setting
 	var strictHostKeyValue string
@@ -163,7 +220,7 @@ func TestSshArgs_HostKeyTakesPrecedenceOverInsecure(t *testing.T) {
 		if args[i] == "-o" && strings.HasPrefix(args[i+1], "UserKnownHostsFile=") {
 			parts := strings.Split(args[i+1], "=")
 			if len(parts) == 2 {
-				os.Remove(parts[1])
+				_ = os.Remove(parts[1])
 			}
 		}
 	}
@@ -175,7 +232,7 @@ func TestSshArgs_InsecureMode(t *testing.T) {
 		"insecure_ignore_host_key": "true",
 	}
 
-	args := sshArgs(endpoint, params)
+	args := sshArgs(endpoint, params, "")
 
 	// Verify StrictHostKeyChecking=no is present
 	found := false
@@ -193,7 +250,7 @@ func TestSshArgs_BatchMode(t *testing.T) {
 	endpoint, _ := url.Parse("sftp://user@example.com/path")
 	params := map[string]string{}
 
-	args := sshArgs(endpoint, params)
+	args := sshArgs(endpoint, params, "")
 
 	// Verify BatchMode=yes is present
 	found := false
@@ -216,7 +273,11 @@ func TestSshArgs_WithMultipleParams(t *testing.T) {
 		"username": "testuser",
 	}
 
-	args := sshArgs(endpoint, params)
+	knownHostsFile, err := setupKnownHosts(params)
+	require.NoError(t, err)
+	defer func() { _ = os.Remove(knownHostsFile) }()
+
+	args := sshArgs(endpoint, params, knownHostsFile)
 
 	// Verify key elements are present
 	hasHostKeyFile := false
@@ -249,7 +310,7 @@ func TestSshArgs_WithMultipleParams(t *testing.T) {
 		if args[i] == "-o" && strings.HasPrefix(args[i+1], "UserKnownHostsFile=") {
 			parts := strings.Split(args[i+1], "=")
 			if len(parts) == 2 {
-				os.Remove(parts[1])
+				_ = os.Remove(parts[1])
 			}
 		}
 	}
