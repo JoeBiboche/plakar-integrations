@@ -228,7 +228,7 @@ func New(
 
 	kubeletImage := params["kubelet_image"]
 	if kubeletImage == "" {
-		kubeletImage = "ghcr.io/plakarkorp/kubelet:541eeddc56949fc617da602d3bce234592108371-34600504204"
+		kubeletImage = "ghcr.io/plakarkorp/kubelet:2f6a9ac0f797b71279cc89daeff4966c66e5d169-35656206139"
 	}
 
 	var capas []corev1.Capability
