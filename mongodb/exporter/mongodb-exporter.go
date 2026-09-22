@@ -45,6 +45,7 @@ type mongodbExporter struct {
 	password string
 	options *connectors.Options
 	use_tls	bool
+	tls_ca_cert string
 	stdin	io.WriteCloser
 	stdout	io.ReadCloser
 	stderr	io.ReadCloser
@@ -89,6 +90,7 @@ func NewExporter(ctx context.Context, opts *connectors.Options, proto string, pa
 		password: params["password"],
 		options: opts,
 		use_tls: use_tls,
+		tls_ca_cert: params["tls_ca_cert"],
 	}
 
 	return e, nil
@@ -106,15 +108,19 @@ func (e *mongodbExporter) commonArgs() []string {
 	args = append(args, e.url.Hostname())
 	args = append(args, "--port")
 	args = append(args, e.port)
-	if e.use_tls {
-		args = append(args, "--tls")
-	}
 
 	return args;
 }
 
 func (e *mongodbExporter) Ping(ctx context.Context) error {
 	args := e.commonArgs()
+	if e.use_tls {
+		args = append(args, "--tls")
+		if len(e.tls_ca_cert) > 0 {
+			args = append(args, "--tlsCAFile")
+			args = append(args, e.tls_ca_cert) 
+		}
+	}
 	args = append(args, "--eval")
 	args = append(args, "db.runCommand({ hello: 1 })")
 	cmd := exec.Command("mongosh", args...)
@@ -171,6 +177,13 @@ func (e *mongodbExporter) Export(ctx context.Context, records <-chan *connectors
 	var err error
 
 	args := e.commonArgs()
+	if e.use_tls {
+		args = append(args, "--ssl")
+		if len(e.tls_ca_cert) > 0 {
+			args = append(args, "--sslCAFile")
+			args = append(args, e.tls_ca_cert) 
+		}
+	}
 	if len(e.username) > 0 {
 		args = append(args, "--username")
 		args = append(args, e.username)
