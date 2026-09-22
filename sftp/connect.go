@@ -95,13 +95,39 @@ func setupPrivateKey(params map[string]string) error {
 	return nil
 }
 
-func sshArgs(endpoint *url.URL, params map[string]string) []string {
+func setupKnownHosts(params map[string]string) (string, error) {
+	hostKey := params["host_key"]
+	if hostKey == "" {
+		return "", nil
+	}
+
+	// Write host_key to a temporary file
+	tmpfile, err := os.CreateTemp("", "known_hosts_*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary known_hosts file: %w", err)
+	}
+
+	if _, err := tmpfile.WriteString(hostKey + "\n"); err != nil {
+		return "", fmt.Errorf("failed to write to temporary known_hosts file: %w", err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temporary known_hosts file: %w", err)
+	}
+
+	return tmpfile.Name(), nil
+}
+func sshArgs(endpoint *url.URL, params map[string]string, knownHostsFile string) []string {
 	// Non-interactive: fail fast instead of hanging on passphrase/host-key prompt
 	args := []string{"-o", "BatchMode=yes"}
 
 	if params["insecure_ignore_host_key"] == "true" {
 		args = append(args, "-o", "StrictHostKeyChecking=no")
 		// args = append(args, "-o", "UserKnownHostsFile=/dev/null") ?
+	}
+
+	if knownHostsFile != "" {
+		args = append(args, "-o", "UserKnownHostsFile="+knownHostsFile)
+		args = append(args, "-o", "StrictHostKeyChecking=yes")
 	}
 
 	if id := params["identity"]; id != "" {
@@ -130,8 +156,8 @@ func checkMaster(sock string) error {
 	return nil
 }
 
-func startMaster(endpoint *url.URL, params map[string]string, host, sock string) error {
-	args := sshArgs(endpoint, params)
+func startMaster(endpoint *url.URL, params map[string]string, host, sock, knownHostsFile string) error {
+	args := sshArgs(endpoint, params, knownHostsFile)
 	args = append(args,
 		"-N", "-f", "-S", sock,
 		"-o", "ControlMaster=yes",
@@ -151,7 +177,7 @@ func startMaster(endpoint *url.URL, params map[string]string, host, sock string)
 	return nil
 }
 
-func ensureMaster(endpoint *url.URL, params map[string]string, host string) (string, error) {
+func ensureMaster(endpoint *url.URL, params map[string]string, host, knownHostsFile string) (string, error) {
 	sock, err := controlSock(endpoint, params)
 	if err != nil {
 		return "", err
@@ -191,7 +217,7 @@ func ensureMaster(endpoint *url.URL, params map[string]string, host string) (str
 			}
 
 			os.Remove(sock)
-			if err := startMaster(endpoint, params, host, sock); err != nil {
+			if err := startMaster(endpoint, params, host, sock, knownHostsFile); err != nil {
 				return "", err
 			}
 		}
@@ -265,7 +291,15 @@ func Connect(endpoint *url.URL, params map[string]string) (*sftp.Client, error) 
 		return nil, fmt.Errorf("missing hostname in endpoint: %q", endpoint.String())
 	}
 
-	args := sshArgs(endpoint, params)
+	knownHostsFile, err := setupKnownHosts(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set up known_hosts: %w", err)
+	}
+	if knownHostsFile != "" {
+		defer os.Remove(knownHostsFile)
+	}
+
+	args := sshArgs(endpoint, params, knownHostsFile)
 
 	// don't use the ControlMaster on windows
 	if runtime.GOOS == "windows" {
@@ -279,7 +313,7 @@ func Connect(endpoint *url.URL, params map[string]string) (*sftp.Client, error) 
 	}
 
 	// ensure the master exists (idempotent) and get the control socket path.
-	sock, err := ensureMaster(endpoint, params, host)
+	sock, err := ensureMaster(endpoint, params, host, knownHostsFile)
 	if err != nil {
 		return nil, err
 	}
