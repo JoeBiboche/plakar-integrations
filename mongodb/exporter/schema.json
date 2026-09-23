@@ -33,6 +33,11 @@
       "type": "boolean",
       "default": true,
       "description": "Use an encrypted TLS/SSL connection."
+    },
+    "tls_ca_cert": {
+      "type": "string",
+      "default": true,
+      "description": "Path to a custom CA certificate to use for verifying the MongoDB server's certificate."
     }
   }
 }

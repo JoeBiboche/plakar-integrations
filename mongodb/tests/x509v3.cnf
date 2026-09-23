@@ -1,0 +1,5 @@
+[x509v3_CA]
+basicConstraints=critical,CA:true
+
+[x509v3_IPAddr]
+subjectAltName=IP:127.0.0.1
